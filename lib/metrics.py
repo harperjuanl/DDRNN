@@ -93,9 +93,8 @@ def masked_smape_np(preds,labels,null_val=np.nan):
         mask = mask.astype('float32')
         mask /= np.mean(mask)
         a = np.abs(np.array(labels) - np.array(preds))
-        b = np.array(labels) + np.array(preds)
+        b = np.abs(np.array(labels)) + np.abs(np.array(preds))
         smape = np.divide(a, b, out=np.zeros_like(a), where=b!=0, casting='unsafe')
-        # smape = np.nan_to_num(smape * smape)
         return 2 * np.mean(smape)
 
 def masked_mape_np(preds, labels, null_val=np.nan):

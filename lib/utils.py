@@ -100,25 +100,10 @@ def calculate_normalized_laplacian(adj):
 
 def calculate_random_walk_matrix(adj_mx):
     d = tf.reduce_sum(adj_mx,1)
-    # d_inv = np.array(np.power(d, -1)).flatten()
     d_inv = tf.matrix_diag(d)
-    # d_inv[np.isinf(d_inv)] = 0.
-    # d_mat_inv = tf.matrix_diag(d_inv)
     d_mat_inv = tf.matrix_inverse(d_inv)
     random_walk_mx = tf.multiply(d_mat_inv,adj_mx)
     return random_walk_mx
-
-
-'''
-print('adj_mx: ', adj_mx)
-adj_mx = sp.coo_matrix(adj_mx)
-d = np.array(adj_mx.sum(1))
-d_inv = np.power(d, -1).flatten()
-d_inv[np.isinf(d_inv)] = 0.
-d_mat_inv = sp.diags(d_inv)
-random_walk_mx = d_mat_inv.dot(adj_mx).tocoo()
-return random_walk_mx
-'''
 
 
 def calculate_reverse_random_walk_matrix(adj_mx):

@@ -9,10 +9,10 @@ from tensorflow.contrib import legacy_seq2seq
 from tensorflow.contrib import seq2seq
 
 from lib.metrics import masked_mae_loss
-from model.gcn_cell import DCGRUCell
+from model.gcn_cell import DDGRUCell
 
 
-class DCRNNModel(object):
+class DDRNNModel(object):
     def __init__(self, is_training, batch_size, scaler, adj_mx, **model_kwargs):
         # Scaler for data normalization.
         self._scaler = scaler
@@ -45,10 +45,10 @@ class DCRNNModel(object):
 
         # GO_SYMBOL = tf.zeros(shape=(batch_size, num_nodes * input_dim))
         GO_SYMBOL = tf.zeros(shape=(batch_size, num_nodes * output_dim))
-        # sqe2seq每一个单元用DCRNN代替
-        cell = DCGRUCell(rnn_units, adj_mx, max_diffusion_step=max_diffusion_step, num_nodes=num_nodes,
+
+        cell = DDGRUCell(rnn_units, adj_mx, max_diffusion_step=max_diffusion_step, num_nodes=num_nodes,
                             filter_type=filter_type)
-        cell_with_projection = DCGRUCell(rnn_units, adj_mx, max_diffusion_step=max_diffusion_step, num_nodes=num_nodes,
+        cell_with_projection = DDGRUCell(rnn_units, adj_mx, max_diffusion_step=max_diffusion_step, num_nodes=num_nodes,
                                             num_proj=output_dim, filter_type=filter_type)
 
         encoding_cells = [cell] * num_rnn_layers
@@ -58,7 +58,7 @@ class DCRNNModel(object):
 
         global_step = tf.train.get_or_create_global_step()
         # Outputs: (batch_size, timesteps, num_nodes, output_dim)
-        with tf.variable_scope('DCRNN_SEQ'):
+        with tf.variable_scope('DDRNN_SEQ'):
             inputs = tf.unstack(tf.reshape(self._inputs, (batch_size, seq_len, num_nodes * input_dim)), axis=1)
             labels = tf.unstack(
                 tf.reshape(self._labels[..., :output_dim], (batch_size, horizon, num_nodes * output_dim)), axis=1)
@@ -81,13 +81,12 @@ class DCRNNModel(object):
                 else:
                     # Return the prediction of the model in testing.
                     result = prev
-                if aux_dim > 0:    # 重点～～～
+                if aux_dim > 0:
                     result = tf.reshape(result, (batch_size, num_nodes, output_dim))
                     result = tf.concat([result, aux_info[i]], axis=-1)
                     result = tf.reshape(result, (batch_size, num_nodes * input_dim))
                 return result
 
-            # seq2seq  重点～～～
             _, enc_state = tf.contrib.rnn.static_rnn(encoding_cells, inputs, dtype=tf.float32)
             labels[0] = tf.reshape(labels[0], (batch_size, num_nodes, output_dim))
             labels[0] = tf.concat([labels[0], aux_info[1]], axis=-1)

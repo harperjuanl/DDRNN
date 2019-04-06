@@ -172,18 +172,18 @@ def generate_graph_seq2seq_io_data(
     return x, y
 
 
-def generate_train_val_test(args):               # 数据格式转换成（num_samples, input_length, num_nodes, input_dim）
+def generate_train_val_test(args):               # （num_samples, input_length, num_nodes, input_dim）
 
     # Data preparation
     df = pd.read_csv('../Data/beijing_aq_meo_agg1.csv')
     df_val = pd.read_csv('../Data/beijing_aq_meo_agg2.csv')
     df_test = pd.read_csv('../Data/beijing_aq_meo_agg3.csv')
-    # 0 is the latest observed sample. 输入长度
+    # 0 is the latest observed sample.
     x_offsets = np.sort(
         # np.concatenate(([-week_size + 1, -day_size + 1], np.arange(-11, 1, 1)))
         np.concatenate((np.arange(-71, 1, 1),))
     )
-    # Predict the next one hour 输出长度
+    # Predict the next one hour
     y_offsets = np.sort(np.arange(1, 49, 1))
     # x: (num_samples, input_length, num_nodes, input_dim)
     # y: (num_samples, output_length, num_nodes, output_dim)
@@ -232,15 +232,15 @@ def generate_train_val_test(args):               # 数据格式转换成（num_s
         )
 
 def main(args):
-    print("Generating training data")          # 划分数据集，将原始数据转换成图数据格式
+    print("Generating training data")
     generate_train_val_test(args)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()             # 创建命令行与参数解析对象
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output_dir", type=str, default="../Data/beijing/", help="Output directory."
-    )                                              # 添加参数
+    )
     parser.add_argument(
         "--air_df_filename",
         type=str,

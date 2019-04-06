@@ -11,7 +11,7 @@ from tensorflow.contrib.rnn import RNNCell
 from lib import utils
 
 
-class DCGRUCell(RNNCell):
+class DDGRUCell(RNNCell):
     """Graph Convolution Gated Recurrent Unit cell.
     """
 
@@ -35,7 +35,7 @@ class DCGRUCell(RNNCell):
         :param filter_type: "laplacian", "random_walk", "dual_random_walk".
         :param use_gc_for_ru: whether to use Graph convolution to calculate the reset and update gates.
         """
-        super(DCGRUCell, self).__init__(_reuse=reuse)
+        super(DDGRUCell, self).__init__(_reuse=reuse)
         self._activation = activation
         self._num_nodes = num_nodes
         self._num_proj = num_proj
@@ -43,19 +43,7 @@ class DCGRUCell(RNNCell):
         self._max_diffusion_step = max_diffusion_step
         self._supports = []
         self._use_gc_for_ru = use_gc_for_ru
-        '''
-        if filter_type == "laplacian":
-            supports.append(utils.calculate_scaled_laplacian(adj_mx, lambda_max=None))
-        elif filter_type == "random_walk":
-            supports.append(utils.calculate_random_walk_matrix(adj_mx).T)
-        elif filter_type == "dual_random_walk":
-            supports.append(utils.calculate_random_walk_matrix(adj_mx).T)
-            supports.append(utils.calculate_random_walk_matrix(adj_mx.T).T)
-        else:
-            supports.append(utils.calculate_scaled_laplacian(adj_mx))
-        for support in supports:
-            self._supports.append(self._build_sparse_matrix(support))
-        '''
+
 
     @staticmethod
     def _build_sparse_matrix(L):
@@ -84,7 +72,7 @@ class DCGRUCell(RNNCell):
         - New state: Either a single `2-D` tensor, or a tuple of tensors matching
             the arity and shapes of `state`
         """
-        with tf.variable_scope(scope or "dcgru_cell"):                             # 重要
+        with tf.variable_scope(scope or "ddgru_cell"):
             with tf.variable_scope("gates"):  # Reset gate and update gate.
                 output_size = 2 * self._num_units
                 # We start with bias of 1.0 to not reset and not update.
@@ -93,8 +81,8 @@ class DCGRUCell(RNNCell):
                 else:
                     fn = self._fc
                 value = tf.nn.sigmoid(fn(inputs, state, output_size, bias_start=1.0))
-                value = tf.reshape(value, (-1, self._num_nodes, output_size))         # !!!
-                r, u = tf.split(value=value, num_or_size_splits=2, axis=-1)  # GRU两个门
+                value = tf.reshape(value, (-1, self._num_nodes, output_size))
+                r, u = tf.split(value=value, num_or_size_splits=2, axis=-1)
                 r = tf.reshape(r, (-1, self._num_nodes * self._num_units))
                 u = tf.reshape(u, (-1, self._num_nodes * self._num_units))
             with tf.variable_scope("candidate"):
@@ -152,33 +140,19 @@ class DCGRUCell(RNNCell):
         dtype = inputs.dtype
 
         x = inputs_and_state
-        x0 = tf.transpose(x, perm=[1, 2, 0])  # (num_nodes, total_arg_size, batch_size)  转置
+        x0 = tf.transpose(x, perm=[1, 2, 0])  # (num_nodes, total_arg_size, batch_size)
         x0 = tf.reshape(x0, shape=[self._num_nodes, input_size * batch_size])
         x = tf.expand_dims(x0, axis=0)
-
-        '''
-        seq_left = tf.expand_dims(inputs, axis=2)
-        seq_right = tf.expand_dims(inputs, axis=1)
-        attn_inter_left = tf.tile(seq_left, (1, 1, self._num_nodes, 1))
-        attn_inter_right = tf.tile(seq_right, (1, self._num_nodes, 1, 1))
-        attn_inter = tf.concat([attn_inter_left, attn_inter_right], axis=-1)
-        
-        attn_inter = tf.layers.dense(attn_inter, 8, activation=tf.nn.relu, name='dense1', reuse=tf.AUTO_REUSE)
-        logits = tf.layers.dense(attn_inter, 1, activation=tf.nn.relu, name='dense2', reuse=tf.AUTO_REUSE)
-        logits = tf.squeeze(logits)
-        '''
 
         seq_fts = tf.layers.conv1d(inputs, 8, 1, use_bias=False)
         f_1 = tf.layers.conv1d(seq_fts, 1, 1)
         f_2 = tf.layers.conv1d(seq_fts, 1, 1)
         logits = f_1 + tf.transpose(f_2, [0, 2, 1])
-        # coefs = tf.nn.softmax(tf.nn.leaky_relu(logits))
+        coefs = tf.nn.softmax(logits)
 
-        # print('adj_mx: ', adj_mx)
-        # adj_mx
         supports = []
         for i in range(64):
-            supports.append(utils.calculate_random_walk_matrix(logits[i]))
+            supports.append(utils.calculate_random_walk_matrix(coefs[i]))
 
         scope = tf.get_variable_scope()
         with tf.variable_scope(scope):           # GCN
@@ -187,11 +161,11 @@ class DCGRUCell(RNNCell):
             else:
                 for support in self._supports:
                     support = tf.cast(support, dtype=tf.float32)
-                    x1 = tf.sparse_tensor_dense_matmul(support, x0)    # L × X
+                    x1 = tf.sparse_tensor_dense_matmul(support, x0)
                     x = self._concat(x, x1)
 
-                    for k in range(2, self._max_diffusion_step + 1):      # 随机游走
-                        x2 = 2 * tf.sparse_tensor_dense_matmul(support, x1) - x0     # 2 × L × L × X - X
+                    for k in range(2, self._max_diffusion_step + 1):
+                        x2 = 2 * tf.sparse_tensor_dense_matmul(support, x1) - x0
                         x = self._concat(x, x2)
                         x1, x0 = x2, x1
 

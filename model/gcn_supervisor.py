@@ -14,30 +14,30 @@ from lib import utils, metrics
 from lib.AMSGrad import AMSGrad
 from lib.metrics import masked_mae_loss
 
-from model.gcn_model import DCRNNModel
+from model.gcn_model import DDRNNModel
 
 
-class DCRNNSupervisor(object):
+class DDRNNSupervisor(object):
     """
     Do experiments using Graph Random Walk RNN model.
     """
 
     def __init__(self, adj_mx, **kwargs):
 
-        self._kwargs = kwargs     # 处理带名字的参数，允许将不同长度的键值对作为参数传给函数
+        self._kwargs = kwargs
         self._data_kwargs = kwargs.get('data')
         self._model_kwargs = kwargs.get('model')
         self._train_kwargs = kwargs.get('train')
 
-        # logging.  记录器
+        # logging.
         self._log_dir = self._get_log_dir(kwargs)
-        log_level = self._kwargs.get('log_level', 'INFO')    # 所有的日志信息均输出
+        log_level = self._kwargs.get('log_level', 'INFO')
         self._logger = utils.get_logger(self._log_dir, __name__, 'info.log', level=log_level)  # 创建记录器
-        self._writer = tf.summary.FileWriter(self._log_dir)    # 增加一个过滤器
+        self._writer = tf.summary.FileWriter(self._log_dir)
         self._logger.info(kwargs)
 
         # Data preparation
-        self._data = utils.load_dataset(**self._data_kwargs)  # 数据加载
+        self._data = utils.load_dataset(**self._data_kwargs)
         for k, v in self._data.items():
             if hasattr(v, 'shape'):
                 self._logger.info((k, v.shape))
@@ -45,15 +45,15 @@ class DCRNNSupervisor(object):
         # Build models.
         scaler = self._data['scaler']
         print('scale: ', scaler)
-        with tf.name_scope('Train'):      # 生成变量
-            with tf.variable_scope('DCRNN', reuse=False):
-                self._train_model = DCRNNModel(is_training=True, scaler=scaler,
+        with tf.name_scope('Train'):
+            with tf.variable_scope('DDRNN', reuse=False):
+                self._train_model = DDRNNModel(is_training=True, scaler=scaler,
                                                batch_size=self._data_kwargs['batch_size'],
                                                adj_mx=adj_mx, **self._model_kwargs)
 
         with tf.name_scope('Test'):
-            with tf.variable_scope('DCRNN', reuse=True):   # 重复使用变量
-                self._test_model = DCRNNModel(is_training=False, scaler=scaler,
+            with tf.variable_scope('DDRNN', reuse=True):
+                self._test_model = DDRNNModel(is_training=False, scaler=scaler,
                                               batch_size=self._data_kwargs['test_batch_size'],
                                               adj_mx=adj_mx, **self._model_kwargs)
 
@@ -63,7 +63,7 @@ class DCRNNSupervisor(object):
         self._new_lr = tf.placeholder(tf.float32, shape=(), name='new_learning_rate')
         self._lr_update = tf.assign(self._lr, self._new_lr, name='lr_update')
 
-        # Configure optimizer  配置优化器
+        # Configure optimizer
         optimizer_name = self._train_kwargs.get('optimizer', 'adam').lower()
         epsilon = float(self._train_kwargs.get('epsilon', 1e-3))
         optimizer = tf.train.AdamOptimizer(self._lr, epsilon=epsilon)
@@ -72,7 +72,7 @@ class DCRNNSupervisor(object):
         elif optimizer_name == 'amsgrad':
             optimizer = AMSGrad(self._lr, epsilon=epsilon)
 
-        # Calculate loss 计算损失
+        # Calculate loss
         output_dim = self._model_kwargs.get('output_dim')
         preds = self._train_model.outputs
         labels = self._train_model.labels[..., :output_dim]
@@ -82,7 +82,7 @@ class DCRNNSupervisor(object):
         self._train_loss = self._loss_fn(preds=preds, labels=labels)
 
         tvars = tf.trainable_variables()
-        grads = tf.gradients(self._train_loss, tvars)     # 计算梯度
+        grads = tf.gradients(self._train_loss, tvars)
         max_grad_norm = kwargs['train'].get('max_grad_norm', 1.)
         grads, _ = tf.clip_by_global_norm(grads, max_grad_norm)
         global_step = tf.train.get_or_create_global_step()
@@ -92,7 +92,7 @@ class DCRNNSupervisor(object):
         self._epoch = 0
         self._saver = tf.train.Saver(tf.global_variables(), max_to_keep=max_to_keep)
 
-        # Log model statistics.  记录模型参数
+        # Log model statistics.
         total_trainable_parameter = utils.get_total_trainable_parameter_size()
         self._logger.info('Total number of trainable parameters: {:d}'.format(total_trainable_parameter))
         for var in tf.global_variables():
@@ -117,7 +117,7 @@ class DCRNNSupervisor(object):
                 filter_type_abbr = 'R'
             elif filter_type == 'dual_random_walk':
                 filter_type_abbr = 'DR'
-            run_id = 'dcrnn_%s_%d_h_%d_%s_lr_%g_bs_%d_%s/' % (
+            run_id = 'ddrnn_%s_%d_h_%d_%s_lr_%g_bs_%d_%s/' % (
                 filter_type_abbr, max_diffusion_step, horizon,
                 structure, learning_rate, batch_size,
                 time.strftime('%m%d%H%M%S'))
@@ -128,7 +128,6 @@ class DCRNNSupervisor(object):
         return log_dir
 
     def run_epoch_generator(self, sess, model, data_generator, return_output=False, training=False, writer=None):
-        # 训练数据
         losses = []
         maes = []
         outputs = []
@@ -192,7 +191,7 @@ class DCRNNSupervisor(object):
     def _train(self, sess, base_lr, epoch, steps, patience=20, epochs=100,
                min_learning_rate=2e-6, lr_decay_ratio=0.1, save_model=1,
                test_every_n_epochs=10, **train_kwargs):
-        # 每一个epoch做训练
+
         history = []
         min_val_loss = float('inf')
         wait = 0
@@ -259,7 +258,6 @@ class DCRNNSupervisor(object):
         return np.min(history)
 
     def evaluate(self, sess, **kwargs):
-        # 测试集评价
         global_step = sess.run(tf.train.get_or_create_global_step())
         test_results = self.run_epoch_generator(sess, self._test_model,
                                                 self._data['test_loader'].get_iterator(),
@@ -276,11 +274,9 @@ class DCRNNSupervisor(object):
         y_truths = []
         for horizon_i in range(self._data['y_test'].shape[1]):
             y_truth = scaler.inverse_transform(self._data['y_test'][:, horizon_i, :, 0])
-            # print('y_truth: ', y_truth)
             y_truths.append(y_truth)
 
             y_pred = scaler.inverse_transform(y_preds[:y_truth.shape[0], horizon_i, :, 0])
-            # print('y_pred: ', y_pred)
             predictions.append(y_pred)
 
             mae = metrics.masked_mae_np(y_pred, y_truth, null_val=0)

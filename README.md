@@ -13,5 +13,5 @@
 
 ### Model Training
 ```
-python gcn_train.py
+python ddrnn_train.py
 ```
